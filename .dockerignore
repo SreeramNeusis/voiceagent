@@ -1,0 +1,15 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+*.webm
+*.wav
+*.mp3
+
+.git
+.gitignore
+
+.env
+.DS_Store

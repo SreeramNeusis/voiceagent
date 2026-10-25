@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ── Tokens ─────────────────────────────────── */
+    :root {
+      --bg:          #08090e;
+      --surface:     #111318;
+      --surface-2:   #1a1d27;
+      --accent:      #7c6afd;
+      --accent-dim:  rgba(124, 106, 253, 0.18);
+      --accent-glow: rgba(124, 106, 253, 0.30);
+      --rec:         #f43f5e;
+      --rec-dim:     rgba(244, 63, 94, 0.18);
+      --rec-glow:    rgba(244, 63, 94, 0.28);
+      --ai-label:    #86efac;
+      --fg:          #eef0f8;
+      --fg-2:        #8b91aa;
+      --fg-3:        #4c5168;
+      --border:      rgba(255,255,255,0.07);
+      --radius:      16px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100%;
+      padding: 40px max(20px, env(safe-area-inset-left, 0px));
+      padding-right: max(20px, env(safe-area-inset-right, 0px));
+      gap: 0;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    .header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 5px 14px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+      margin-bottom: 18px;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ai-label);
+      box-shadow: 0 0 6px var(--ai-label);
+    }
+
+    .header h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      color: var(--fg);
+    }
+
+    .header p {
+      font-size: 0.825rem;
+      color: var(--fg-3);
+      margin-top: 6px;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+    }
+
+    /* ── Mic area ────────────────────────────────── */
+    .mic-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+    }
+
+    /* Waveform */
+    #waveform {
+      width: 260px;
+      height: 52px;
+      opacity: 0;
+      transform: scaleY(0.6);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+      display: block;
+    }
+    #waveform.active {
+      opacity: 1;
+      transform: scaleY(1);
+    }
+
+    /* Button wrapper */
+    .mic-wrapper {
+      position: relative;
+      width: 130px;
+      height: 130px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Ambient idle rings */
+    .ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .idle-ring {
+      border: 1px solid rgba(124, 106, 253, 0.12);
+      animation: idle-expand 3s ease-out infinite;
+    }
+    .idle-ring:nth-child(2) { animation-delay: 1s; }
+    .idle-ring:nth-child(3) { animation-delay: 2s; }
+
+    @keyframes idle-expand {
+      0%   { transform: scale(1);   opacity: 0.7; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+
+    /* Recording pulse rings */
+    .pulse-ring {
+      background: var(--rec-dim);
+      animation: rec-expand 1.4s ease-out infinite;
+      display: none;
+    }
+    .pulse-ring:nth-child(2) { animation-delay: 0.45s; }
+    .pulse-ring:nth-child(3) { animation-delay: 0.9s; }
+
+    @keyframes rec-expand {
+      0%   { transform: scale(1);   opacity: 0.8; }
+      100% { transform: scale(2.3); opacity: 0; }
+    }
+
+    body.is-recording .idle-ring  { animation-play-state: paused; opacity: 0; }
+    body.is-recording .pulse-ring { display: block; }
+
+    /* The button */
+    #btn {
+      position: relative;
+      z-index: 1;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.25s, transform 0.15s, box-shadow 0.25s;
+      box-shadow: 0 0 48px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.5);
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: none;
+    }
+
+    #btn:hover:not(.recording):not(.processing) {
+      transform: scale(1.06);
+      box-shadow: 0 0 72px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    #btn.recording {
+      background: var(--rec);
+      transform: scale(0.95);
+      box-shadow: 0 0 48px var(--rec-glow), 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    #btn.processing {
+      background: var(--surface-2);
+      cursor: wait;
+      box-shadow: 0 0 16px rgba(0,0,0,0.4);
+    }
+
+    #btn.processing::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: var(--accent);
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .mic-icon { pointer-events: none; }
+
+    /* Hint + status */
+    .hint {
+      font-size: 0.775rem;
+      color: var(--fg-3);
+      letter-spacing: 0.04em;
+      margin-top: -8px;
+    }
+
+    #status {
+      font-size: 0.825rem;
+      color: var(--fg-3);
+      min-height: 18px;
+      text-align: center;
+      transition: color 0.3s;
+      letter-spacing: 0.01em;
+    }
+    #status.recording  { color: var(--rec); }
+    #status.processing { color: #a598ff; }
+    #status.error      { color: #fca5a5; }
+
+    /* ── Output cards ────────────────────────────── */
+    .output {
+      width: 100%;
+      max-width: 500px;
+      margin-top: 52px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.45s ease, transform 0.45s ease;
+      pointer-events: none;
+    }
+
+    .output.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .message {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+
+    .message-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .message.you .message-label  { color: #a598ff; }
+    .message.ai  .message-label  { color: var(--ai-label); }
+
+    .message-text {
+      font-size: 0.9375rem;
+      line-height: 1.65;
+      color: var(--fg);
+      font-weight: 400;
+    }
+
+    audio { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-badge">
+    <span class="badge-dot"></span>
+    Live
+  </div>
+  <h1>Voice Agent</h1>
+  <p>Whisper · Gemini · Google TTS</p>
+</header>
+
+<!-- Mic -->
+<section class="mic-area">
+  <canvas id="waveform" width="520" height="104" aria-hidden="true"></canvas>
+
+  <div class="mic-wrapper">
+    <!-- Idle ambient rings -->
+    <div class="ring idle-ring"></div>
+    <div class="ring idle-ring"></div>
+    <div class="ring idle-ring"></div>
+    <!-- Recording pulse rings -->
+    <div class="ring pulse-ring"></div>
+    <div class="ring pulse-ring"></div>
+    <div class="ring pulse-ring"></div>
+
+    <button id="btn" aria-label="Hold to talk">
+      <svg class="mic-icon" width="46" height="46" viewBox="0 0 46 46" fill="none" aria-hidden="true">
+        <rect x="17" y="7" width="12" height="20" rx="6" fill="white"/>
+        <path d="M11 23c0 6.627 5.373 12 12 12s12-5.373 12-12"
+              stroke="white" stroke-width="2.4" stroke-linecap="round"/>
+        <line x1="23" y1="35" x2="23" y2="41" stroke="white" stroke-width="2.4" stroke-linecap="round"/>
+        <line x1="17" y1="41" x2="29" y2="41" stroke="white" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <p class="hint">Hold to talk</p>
+  <p id="status" role="status" aria-live="polite"></p>
+</section>
+
+<!-- Output -->
+<div class="output" id="output" aria-live="polite">
+  <div class="message you">
+    <div class="message-label">You</div>
+    <div class="message-text" id="transcript"></div>
+  </div>
+  <div class="message ai">
+    <div class="message-label">Assistant</div>
+    <div class="message-text" id="response-text"></div>
+  </div>
+</div>
+
+<audio id="audio"></audio>
+
+<script>
+  const btn          = document.getElementById("btn");
+  const statusEl     = document.getElementById("status");
+  const outputEl     = document.getElementById("output");
+  const transcriptEl = document.getElementById("transcript");
+  const responseEl   = document.getElementById("response-text");
+  const audioEl      = document.getElementById("audio");
+  const canvas       = document.getElementById("waveform");
+  const ctx2d        = canvas.getContext("2d");
+
+  let mediaRecorder, chunks = [], rafId, audioCtx, analyser;
+
+  // ── Status helper ──────────────────────────────
+  function setStatus(text, cls = "") {
+    statusEl.textContent = text;
+    statusEl.className   = cls;
+  }
+
+  // ── Waveform ───────────────────────────────────
+  function startWaveform(stream) {
+    canvas.classList.add("active");
+    const dpr = window.devicePixelRatio || 1;
+    const W   = canvas.offsetWidth;
+    const H   = canvas.offsetHeight;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    ctx2d.scale(dpr, dpr);
+
+    audioCtx = new AudioContext();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 64;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    const barW = 4, gap = 3;
+    const bars = Math.floor(W / (barW + gap));
+
+    function draw() {
+      rafId = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(freqData);
+      ctx2d.clearRect(0, 0, W, H);
+      ctx2d.fillStyle = "rgba(244, 63, 94, 0.9)";
+      for (let i = 0; i < bars; i++) {
+        const v = (freqData[Math.floor(i * freqData.length / bars)] || 0) / 255;
+        const h = Math.max(4, v * H * 0.88);
+        const x = i * (barW + gap);
+        const y = (H - h) / 2;
+        ctx2d.beginPath();
+        // rounded bars (fallback for older browsers)
+        if (ctx2d.roundRect) {
+          ctx2d.roundRect(x, y, barW, h, 2);
+        } else {
+          ctx2d.rect(x, y, barW, h);
+        }
+        ctx2d.fill();
+      }
+    }
+    draw();
+  }
+
+  function stopWaveform() {
+    cancelAnimationFrame(rafId);
+    canvas.classList.remove("active");
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  }
+
+  // ── Base64 → Blob ──────────────────────────────
+  function base64ToBlob(b64, mime) {
+    const raw  = atob(b64);
+    const arr  = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+
+  // ── Record ─────────────────────────────────────
+  async function startRecording() {
+    if (btn.classList.contains("processing")) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      chunks = [];
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
+      mediaRecorder.start();
+
+      btn.classList.add("recording");
+      document.body.classList.add("is-recording");
+      setStatus("Recording…", "recording");
+      startWaveform(stream);
+    } catch (err) {
+      setStatus("Microphone access denied", "error");
+    }
+  }
+
+  async function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+
+    mediaRecorder.onstop = async () => {
+      stopWaveform();
+      btn.classList.remove("recording");
+      btn.classList.add("processing");
+      document.body.classList.remove("is-recording");
+      setStatus("Thinking…", "processing");
+
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      const form = new FormData();
+      form.append("file", blob, "audio.webm");
+
+      try {
+        const res = await fetch("/talk", { method: "POST", body: form });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+
+        transcriptEl.textContent = data.transcript;
+        responseEl.textContent   = data.response;
+        outputEl.classList.add("visible");
+        setStatus("");
+
+        const audioBlob = base64ToBlob(data.audio_base64, "audio/mpeg");
+        if (audioEl.src?.startsWith("blob:")) URL.revokeObjectURL(audioEl.src);
+        audioEl.src = URL.createObjectURL(audioBlob);
+        audioEl.play().catch(() => {});  // ignore autoplay rejection
+      } catch (err) {
+        setStatus("Error: " + err.message, "error");
+      } finally {
+        btn.classList.remove("processing");
+      }
+    };
+
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  }
+
+  // ── Events (mouse + touch) ─────────────────────
+  btn.addEventListener("mousedown",  startRecording);
+  btn.addEventListener("mouseup",    stopRecording);
+  btn.addEventListener("mouseleave", () => {
+    if (mediaRecorder?.state === "recording") stopRecording();
+  });
+
+  btn.addEventListener("touchstart", e => { e.preventDefault(); startRecording(); }, { passive: false });
+  btn.addEventListener("touchend",   e => { e.preventDefault(); stopRecording();  }, { passive: false });
+</script>
+
+</body>
+</html>
